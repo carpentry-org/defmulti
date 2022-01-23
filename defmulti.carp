@@ -1,0 +1,38 @@
+(defdynamic *defmulti-registry* {})
+
+(defndynamic defmulti-lookup [name args]
+  (do
+    (macro-log name)
+    (macro-log args)
+    (macro-log *defmulti-registry*)
+  (let [registry (Map.get *defmulti-registry* name)]
+    (if (nil? registry)
+      (macro-error "This shouldn’t happen! A defmulti error!")
+      (let [f (Map.get registry (length args))]
+        (if (nil? f)
+          (macro-error (str "No arity " (length args) " version of " name " found!"))
+          f))))))
+
+(defndynamic defmulti- [name forms]
+  (if (empty? forms)
+    '()
+    (if (= (length forms) 1)
+      (macro-error "Uneven number of forms in `defmulti`.")
+      (let-do [s (gensym-with name)
+               args (car forms)]
+        (eval `(defn %s %args %(cadr forms)))
+        (set! *defmulti-registry*
+          (Map.put *defmulti-registry*
+            name
+            (Map.put
+              (Map.get *defmulti-registry* name)
+              (length args)
+              s)))
+        (macro-log *defmulti-registry*)
+        (defmulti- name (cddr forms))))))
+
+(defmacro defmulti [name :rest forms]
+  (do
+    (set! *defmulti-registry* (Map.put *defmulti-registry* name {}))
+    (defmulti- name forms)
+    (eval `(defmacro %name [:rest args] (cons (defmulti-lookup (quote %name) args) args)))))
