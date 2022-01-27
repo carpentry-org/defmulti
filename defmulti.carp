@@ -1,17 +1,60 @@
 (defdynamic *defmulti-registry* {})
 
+(defmodule Dynamic
+  (defndynamic inverse [f]
+    (fn [a] (not (f a))))
+
+  (defmodule List
+    (defndynamic take-while [f l]
+      (cond
+        (empty? l) '()
+        (f (car l)) (cons (car l) (List.take-while f (cdr l)))
+        '()))
+
+    (defndynamic take [n l]
+      (if (or (empty? l) (= 0 n))
+        '()
+        (cons (car l) (List.take (dec n) (cdr l)))))
+
+    (defndynamic drop [n l]
+      (if (or (empty? l) (= 0 n))
+        l
+        (List.drop (dec n) (cdr l))))
+  )
+)
+
+(defndynamic defmulti-match-up [args params]
+  (if (empty? params)
+    (map cadr args)
+    (if (list? (car params))
+      (let [a (car args)
+            i (List.find-index params (fn [pair] (= (car pair) (car a))))]
+        (if (> i -1)
+          (cons (cadr (List.nth params i)) (defmulti-match-up (cdr args) (List.remove-nth params i)))
+          (cons (cadar args) (defmulti-match-up (cdr args) (cdr params)))))
+      (cons (car params) (defmulti-match-up (cdr args) (cdr params))))))
+
+(defndynamic defmulti-variable-resolve [f args params]
+  (if (> (length params) (length args))
+    (macro-error (str "No arity " (length args) " version of " name " found!"))
+    (let [no-positional (length (List.take-while (inverse list?) args))
+          positional (List.take no-positional params)
+          optional-args (List.drop no-positional args)
+          optional-params (List.drop no-positional params)
+          opt-args (defmulti-match-up optional-args optional-params)]
+      (cons f (append positional opt-args)))))
+
 (defndynamic defmulti-lookup [name args]
-  (do
-    (macro-log name)
-    (macro-log args)
-    (macro-log *defmulti-registry*)
   (let [registry (Map.get *defmulti-registry* name)]
     (if (nil? registry)
       (macro-error "This shouldn’t happen! A defmulti error!")
       (let [f (Map.get registry (length args))]
         (if (nil? f)
-          (macro-error (str "No arity " (length args) " version of " name " found!"))
-          f))))))
+          (let [f (Map.get registry 'variable)]
+            (if (nil? f)
+              (macro-error (str "No arity " (length args) " version of " name " found!"))
+              (defmulti-variable-resolve (car f) (cadr f) args)))
+          (cons f args))))))
 
 (defndynamic defmulti- [name forms]
   (if (empty? forms)
@@ -20,19 +63,18 @@
       (macro-error "Uneven number of forms in `defmulti`.")
       (let-do [s (gensym-with name)
                args (car forms)]
-        (eval `(defn %s %args %(cadr forms)))
+        (eval `(defn %s %(collect-into (map (fn [arg] (if (list? arg) (car arg) arg)) args) array) %(cadr forms)))
         (set! *defmulti-registry*
           (Map.put *defmulti-registry*
             name
             (Map.put
               (Map.get *defmulti-registry* name)
-              (length args)
-              s)))
-        (macro-log *defmulti-registry*)
+              (if (any? list? args) 'variable (length args))
+              (if (any? list? args) (list s args) s))))
         (defmulti- name (cddr forms))))))
 
 (defmacro defmulti [name :rest forms]
   (do
     (set! *defmulti-registry* (Map.put *defmulti-registry* name {}))
     (defmulti- name forms)
-    (eval `(defmacro %name [:rest args] (cons (defmulti-lookup (quote %name) args) args)))))
+    (eval `(defmacro %name [:rest args] (defmulti-lookup (quote %name) args)))))

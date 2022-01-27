@@ -11,16 +11,20 @@ can’t be used in higher-order functions.
 ## Usage
 
 ```clojure
+(load "defmulti.carp")
+
 (defmulti addr
   [] 0
   [x] (+ x 1)
-  [x y] (+ x y))
+  [x y (f +)] (f x y))
 
 (defn main []
   (do
     (println* (addr))
     (println* (addr 1))
-    (println* (addr 4 3))))
+    (println* (addr 4 3))
+    (println* (addr 4 3 (f -)))
+    (println* (addr 4 3 *))))
 ```
 
 <hr/>
