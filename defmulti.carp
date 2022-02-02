@@ -34,7 +34,7 @@
           (cons (cadar args) (defmulti-match-up (cdr args) (cdr params)))))
       (cons (car params) (defmulti-match-up (cdr args) (cdr params))))))
 
-(defndynamic defmulti-variable-resolve [f args params]
+(defndynamic defmulti-variable-resolve [name f args params]
   (if (> (length params) (length args))
     (macro-error (str "No arity " (length args) " version of " name " found!"))
     (let [no-positional (length (List.take-while (inverse list?) args))
@@ -53,7 +53,7 @@
           (let [f (Map.get registry 'variable)]
             (if (nil? f)
               (macro-error (str "No arity " (length args) " version of " name " found!"))
-              (defmulti-variable-resolve (car f) (cadr f) args)))
+              (defmulti-variable-resolve name (car f) (cadr f) args)))
           (cons f args))))))
 
 (defndynamic defmulti- [name forms]
